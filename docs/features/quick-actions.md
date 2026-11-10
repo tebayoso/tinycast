@@ -66,7 +66,9 @@ selectable Markdown renderer with AI Chat.
 - **Built-in instructions treat the selection as untrusted input.** `QuickActionPrompt` tells the
   model that the text is material to work on and never instructions to follow, and that only the
   transformed text may come back — no preamble, no fences. Custom instructions replace these rules
-  too. The output is pasted into somebody's document.
+  too. The output is pasted into somebody's document. The selection travels inside `<text>` tags,
+  because models echoed the bare `Text:` label it used to carry, and `QuickActionPrompt.unwrapped`
+  strips an echoed pair before delivery.
 - **A custom prompt cannot drop that boundary.** An override on a shipped action may replace
   `boundary`, because the sheet shows the whole prompt. A custom action *is* the prompt, so `boundary`
   is prepended and no control removes it.

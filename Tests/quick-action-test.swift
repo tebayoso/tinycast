@@ -240,15 +240,34 @@ struct QuickActionTests {
 
         // The delimiter is what stops a short selection reading as part of the instruction.
         let message = QuickActionPrompt.message(for: .fixGrammar, selection: "teh cat")
-        expect(message.contains("Text:"), "the selection is delimited from the instruction")
-        expect(message.hasSuffix("teh cat"), "the selection goes last, unaltered")
+        expect(
+            message == "<text>\nteh cat\n</text>",
+            "the selection is tagged, unaltered, and goes last")
+        expect(
+            QuickActionPrompt.boundary.contains("<text>"),
+            "the boundary names the tags it relies on")
+        expect(
+            QuickActionPrompt.unwrapped("  <text>\nThe cat.\n</text>\n", selection: "teh cat")
+                == "The cat.",
+            "an echoed delimiter never reaches the document")
+        expect(
+            QuickActionPrompt.unwrapped("The <text> tag stays.", selection: "x")
+                == "The <text> tag stays.",
+            "a reply that merely mentions the tag is left alone")
+        expect(
+            QuickActionPrompt.unwrapped("<text></text>", selection: "x").isEmpty,
+            "an empty echo is empty")
+        expect(
+            QuickActionPrompt.unwrapped("<text>Fixed.</text>", selection: " <text>fixd</text> ")
+                == "<text>Fixed.</text>",
+            "a selection that is itself tagged keeps its tags")
 
         // Only Summarize asks a question of the text; the rest just hand it over to be transformed.
         expect(
             QuickActionPrompt.message(for: .summarize, selection: "hi").hasPrefix("Summarize"),
             "a summary names the task above the text it is given")
         expect(
-            QuickActionPrompt.message(for: .rewrite, selection: "hi").hasPrefix("Text:"),
+            QuickActionPrompt.message(for: .rewrite, selection: "hi").hasPrefix("<text>"),
             "an action whose instructions already say what to do adds no second request")
 
         expect(
@@ -368,7 +387,7 @@ struct QuickActionTests {
                 == instructions,
             "a custom action has no separate override to be replaced by")
         expect(
-            QuickActionPrompt.message(for: .custom(record), selection: "hi").hasPrefix("Text:"),
+            QuickActionPrompt.message(for: .custom(record), selection: "hi").hasPrefix("<text>"),
             "only Summarize names a task above the text")
     }
 

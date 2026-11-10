@@ -56,7 +56,7 @@ final class QuickActionRunner {
             text += delta
             onDelta(delta)
         }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = QuickActionPrompt.unwrapped(text, selection: selection)
         guard !trimmed.isEmpty else {
             throw AIProviderError.responseFailed(String(localized: "The model returned nothing."))
         }
