@@ -24,6 +24,7 @@ struct SnippetsTests {
         testDynamicPlaceholders()
         testTemplateEncodingAndSelectionAlias()
         testKeywordPolicy()
+        testRendererLineBreaks()
         testKeywordLifecycle()
         await testKeywordListenerLifecycle()
         testOwnEditorInjection()
@@ -1633,6 +1634,32 @@ struct SnippetsTests {
         check(
             "a parameter named query is still an argument, not the alias",
             expand("{argument name=\"query\"}", arguments: ["query": "kept"]).text == "kept")
+    }
+
+    /// Chromium's selected text joins Draft.js blocks; its `AXValue` keeps the breaks between them.
+    private static func testRendererLineBreaks() {
+        let value = "Esto seria.\nAdemas tambien.\nY mas."
+        let whole = NSRange(location: 0, length: (value as NSString).length)
+        check(
+            "a renderer's joined selection gets its paragraph breaks back",
+            AccessibilityText.lineBreaksRestored(
+                "Esto seria.Ademas tambien.Y mas.", from: value, range: whole) == value)
+        check(
+            "a selection that already has its breaks needs no restoring",
+            AccessibilityText.lineBreaksRestored(value, from: value, range: whole) == nil)
+        check(
+            "a value that trails the editor by a keystroke is refused",
+            AccessibilityText.lineBreaksRestored(
+                "Esto sería.Además también.Y más.", from: value, range: whole) == nil)
+        check(
+            "a range the value cannot address is refused",
+            AccessibilityText.lineBreaksRestored(
+                "Esto", from: value, range: NSRange(location: 90, length: 4)) == nil)
+        let inner = NSRange(location: 5, length: 15)
+        check(
+            "a selection inside the value is restored over its own range only",
+            AccessibilityText.lineBreaksRestored("seria.Ademas t", from: value, range: inner)
+                == "seria.\nAdemas t")
     }
 
     private static func testKeywordPolicy() {

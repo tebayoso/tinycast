@@ -226,9 +226,13 @@ When the target is the Notes editor, the coordinator captures its selected sourc
 window changes focus. Empty and oversized selections use the same limits as external text.
 
 Two tiers, in order. `AccessibilityText.read` asks for `kAXSelectedTextAttribute`, then the
-text-marker range browsers use instead. `AXManualAccessibility` is set on the application element
-first, because Chromium builds its accessibility tree only once something asks and Chrome, Electron
-apps and VS Code otherwise answer every attribute with nothing.
+text-marker range browsers use instead. **Chromium's selected text drops paragraph breaks** —
+two Draft.js blocks on X read as `corregido.Ademas` — while its `AXValue` keeps them, so for a
+marker-range element the selection is re-read as `AXValue` over `AXSelectedTextRange`, accepted
+only when it is the same text once line breaks are removed (`lineBreaksRestored`, held by
+`snippets-test`). Without it, a replace joined the paragraphs. `AXManualAccessibility` is set on the
+application element first, because Chromium builds its accessibility tree only once something asks
+and Chrome, Electron apps and VS Code otherwise answer every attribute with nothing.
 
 When Accessibility yields nothing, `TextInjector.copySelection` borrows a ⌘C: snapshot the
 pasteboard, pause clipboard history, synthesise the chord, wait for `changeCount` to **move**, read,

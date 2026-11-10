@@ -41,9 +41,11 @@ enum AccessibilityText {
             element,
             kAXSelectedTextAttribute as CFString,
             &value)
-        if status == .success, let text = value as? String, !text.isEmpty { return .text(text) }
+        if status == .success, let text = value as? String, !text.isEmpty {
+            return .text(restoringLineBreaks(text, in: element) ?? text)
+        }
         guard let web = webSelection(in: element), !web.isEmpty else { return .empty }
-        return .text(web)
+        return .text(restoringLineBreaks(web, in: element) ?? web)
     }
 
     /// A narrower question, for callers that can act on the text but not on why there is none.
@@ -56,6 +58,42 @@ enum AccessibilityText {
     private static func activateManualAccessibility(of application: AXUIElement) {
         AXUIElementSetAttributeValue(
             application, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+    }
+
+    /// Chromium's selected text drops paragraph breaks its `AXValue` keeps; a replace joins them.
+    private static func restoringLineBreaks(
+        _ selection: String, in element: AXUIElement
+    ) -> String? {
+        var marker: CFTypeRef?
+        var value: CFTypeRef?
+        var rangeValue: CFTypeRef?
+        var range = CFRange()
+        guard
+            AXUIElementCopyAttributeValue(
+                element, kAXSelectedTextMarkerRangeAttribute as CFString, &marker) == .success,
+            let marker, CFGetTypeID(marker) == AXTextMarkerRangeGetTypeID(),
+            AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value)
+                == .success,
+            let text = value as? String,
+            AXUIElementCopyAttributeValue(
+                element, kAXSelectedTextRangeAttribute as CFString, &rangeValue) == .success,
+            let rangeValue, CFGetTypeID(rangeValue) == AXValueGetTypeID(),
+            AXValueGetValue(rangeValue as! AXValue, .cfRange, &range)
+        else { return nil }
+        return lineBreaksRestored(
+            selection, from: text, range: NSRange(location: range.location, length: range.length))
+    }
+
+    /// Rule 1: a value that trails the editor is not the selection, so only the same text passes.
+    static func lineBreaksRestored(
+        _ selection: String, from value: String, range: NSRange
+    ) -> String? {
+        guard let bounds = Range(range, in: value) else { return nil }
+        let candidate = String(value[bounds])
+        guard candidate != selection,
+            candidate.filter({ !$0.isNewline }) == selection.filter({ !$0.isNewline })
+        else { return nil }
+        return candidate
     }
 
     /// Browsers have no `AXSelectedText`: web selection exists only as an opaque marker range.
