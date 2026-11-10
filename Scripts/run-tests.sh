@@ -369,6 +369,7 @@ run dictation-field-test   Tinycast/Features/Dictation/Model/DictationModel.swif
                            Tinycast/Features/Dictation/Service/DictationCoordinator.swift \
                            Tinycast/Features/Dictation/Service/DictationInsertionContext.swift \
                            Tinycast/Features/AI/UI/ChatComposerTextView.swift \
+                           Tinycast/Features/TextInjection/Model/*.swift \
                            Tinycast/Features/TextInjection/Service/*.swift \
                            Tinycast/Features/Snippets/Model/*.swift \
                            Tinycast/Platform/AccessibilityText.swift \
@@ -584,6 +585,7 @@ run slow snippets-test     Tinycast/Platform/NotificationToken.swift \
                            Tinycast/Features/Snippets/Model/*.swift \
                            Tinycast/Features/Snippets/Service/*.swift \
                            Tinycast/Features/Snippets/UI/SnippetEditorSession.swift \
+                           Tinycast/Features/TextInjection/Model/*.swift \
                            Tinycast/Features/TextInjection/Service/*.swift
 run notes-test             Tinycast/Platform/Signposts.swift \
                            $L/SearchRelevance.swift \
@@ -895,7 +897,10 @@ run quick-action-test      Tinycast/Features/Settings/AppSettingsKey.swift \
                            Tinycast/Features/QuickActions/Model/QuickActionFailure.swift \
                            Tinycast/Features/QuickActions/Model/QuickActionPrompt.swift \
                            Tinycast/Features/QuickActions/Model/QuickActionSettings.swift \
+                           Tinycast/Features/QuickActions/Model/RetypeEngine.swift \
+                           Tinycast/Features/QuickActions/Model/TextDiffEngine.swift \
                            Tinycast/Features/QuickActions/Settings/QuickActionSettingsStore.swift \
+                           Tinycast/Features/TextInjection/Model/RetypeEdit.swift \
                            Tinycast/Platform/LocalizedResource.swift
 run apple-intelligence-test Tinycast/Features/Settings/AppSettingsKey.swift \
                            Tinycast/Features/AI/Model/*.swift \

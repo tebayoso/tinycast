@@ -44,5 +44,8 @@ enum BuiltInQuickAction: String, CaseIterable, Codable, Identifiable, Sendable {
 
     var showsDiff: Bool { self == .fixGrammar || self == .rewrite }
 
+    /// Typing only the changes needs the result to be the selection edited, which a diff shows.
+    var offersTypedChanges: Bool { showsDiff }
+
     var usesTranslationFramework: Bool { self == .translate }
 }

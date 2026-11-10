@@ -25,6 +25,8 @@ final class QuickActionSettingsStore {
         loaded.storedPreviewChoices =
             defaults.dictionary(forKey: AppSettingsKey.quickActionPreviews.rawValue)
             as? [String: Bool] ?? [:]
+        loaded.storedTypedChangeChoices =
+            defaults.stringArray(forKey: AppSettingsKey.quickActionTypedChanges.rawValue) ?? []
         loaded.targetLanguage =
             defaults.string(forKey: AppSettingsKey.quickActionLanguage.rawValue) ?? ""
         loaded.storedInstructionOverrides =
@@ -118,6 +120,9 @@ final class QuickActionSettingsStore {
     private func persistSettings() {
         defaults.set(
             settings.storedPreviewChoices, forKey: AppSettingsKey.quickActionPreviews.rawValue)
+        defaults.set(
+            settings.storedTypedChangeChoices,
+            forKey: AppSettingsKey.quickActionTypedChanges.rawValue)
         defaults.set(settings.targetLanguage, forKey: AppSettingsKey.quickActionLanguage.rawValue)
         defaults.set(
             settings.storedInstructionOverrides,

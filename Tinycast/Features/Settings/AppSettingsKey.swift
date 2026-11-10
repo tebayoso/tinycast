@@ -106,6 +106,7 @@ enum AppSettingsKey: String, CaseIterable {
     case quickActionModel = "quickActionModel"
     case quickActionModelOverrides = "quickActionModelOverrides"
     case quickActionPreviews = "quickActionPreviews"
+    case quickActionTypedChanges = "quickActionTypedChanges"
     case quickActionInstructions = "quickActionInstructions"
     case quickActionLanguage = "quickActionLanguage"
     case dictationEnabled = "dictationEnabled"

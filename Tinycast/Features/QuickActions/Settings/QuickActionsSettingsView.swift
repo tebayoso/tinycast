@@ -113,9 +113,14 @@ struct QuickActionsSettingsView: View {
         } header: {
             SettingsSectionHeader(.quickActionsActions)
         } footer: {
-            Text("Replace writes into your document, and undo restores it. Preview shows a panel first.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                """
+                Replace writes into your document, and undo restores it. Type Changes moves the \
+                cursor to each correction and types only what changed. Preview shows a panel first.
+                """
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -130,7 +135,7 @@ struct QuickActionsSettingsView: View {
             }
             if let entry { AliasField(entry: entry) }
             ShortcutRecorder(action: .command(CommandID(action)), isQuiet: true)
-            resultPicker(title: action.title, selection: previewBinding(action))
+            resultPicker(action)
                 .disabled(action.alwaysPreviews)
             if let entry { launcherToggle(title: action.title, entry: entry) }
         }
@@ -153,6 +158,19 @@ struct QuickActionsSettingsView: View {
         .labelsHidden()
         .fixedSize()
         .accessibilityLabel("What \(title) does with its result")
+    }
+
+    private func resultPicker(_ action: BuiltInQuickAction) -> some View {
+        Picker("", selection: resultModeBinding(action)) {
+            Text("Replace").tag(QuickActionResultMode.replace)
+            if action.offersTypedChanges {
+                Text("Type Changes").tag(QuickActionResultMode.typeChanges)
+            }
+            Text("Preview").tag(QuickActionResultMode.preview)
+        }
+        .labelsHidden()
+        .fixedSize()
+        .accessibilityLabel("What \(action.title) does with its result")
     }
 
     private func launcherToggle(title: String, entry: AppEntry) -> some View {
@@ -224,10 +242,10 @@ struct QuickActionsSettingsView: View {
             set: { core.quickActionCoordinator.setEnabled($0) })
     }
 
-    private func previewBinding(_ action: BuiltInQuickAction) -> Binding<Bool> {
+    private func resultModeBinding(_ action: BuiltInQuickAction) -> Binding<QuickActionResultMode> {
         Binding(
-            get: { store.settings.previewsResult(action) },
-            set: { store.settings.setPreviewsResult($0, for: action) })
+            get: { store.settings.resultMode(action) },
+            set: { store.settings.setResultMode($0, for: action) })
     }
 
     private func previewBinding(_ action: CustomQuickAction) -> Binding<Bool> {

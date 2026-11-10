@@ -221,6 +221,260 @@ final class TextInjector {
             automaticGeneration: nil, onDelivered: onDelivered, onFailed: onFailed)
     }
 
+    /// Types only `edits` over a selection still reading `original`; the caller awaits the keys.
+    func retypeSelection(
+        _ original: String, as modified: String, edits: [RetypeEdit],
+        in targetApp: NSRunningApplication?
+    ) async -> Bool {
+        activate(targetApp)
+        guard prepareInteractiveExpansion(target: targetApp.map(InjectionTarget.external)) else {
+            return false
+        }
+        let result = RetypeResult()
+        let job = deliveryQueue.enqueue(isAutomatic: false) { [weak self] in
+            result.delivered =
+                await self?.performRetype(
+                    original, as: modified, edits: edits, targetApp: targetApp) ?? false
+        }
+        // The keys run on the queue's task, so the caller's cancellation has to be passed along.
+        await withTaskCancellationHandler {
+            await deliveryQueue.drain()
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.deliveryQueue.cancel(job) }
+        }
+        return result.delivered
+    }
+
+    /// A cancelled queue job never runs its operation, so the answer lives outside it.
+    private final class RetypeResult {
+        var delivered = false
+    }
+
+    private enum RetypeOutcome {
+        case delivered
+        /// Nothing was typed and the selection is where it was, so a plain replace may still run.
+        case untouched
+        case failed
+    }
+
+    private struct RetypeAnchor {
+        let element: AXUIElement
+        let range: NSRange
+    }
+
+    private func performRetype(
+        _ original: String, as modified: String, edits: [RetypeEdit],
+        targetApp: NSRunningApplication?
+    ) async -> Bool {
+        guard finishPendingPasteboardOwnership(),
+            await activateAndWaitForTarget(targetApp, automaticGeneration: nil),
+            deliveryIsAllowed(
+                automaticGeneration: nil, targetApp: targetApp,
+                promptForInteractiveAccessibility: true),
+            let targetApp
+        else { return false }
+
+        let outcome: RetypeOutcome
+        if let anchor = retypeAnchor(for: original, in: targetApp) {
+            outcome =
+                RetypeEdit.placedKeystrokes(edits) <= RetypeEdit.maxKeystrokes
+                ? await retypeByPlacingCaret(edits, anchor: anchor, targetApp: targetApp)
+                : .untouched
+        } else {
+            switch AccessibilityText.read(in: targetApp) {
+            case .text(original):
+                outcome =
+                    RetypeEdit.walkedKeystrokes(edits) <= RetypeEdit.maxKeystrokes
+                    ? await retypeByWalkingCaret(edits, targetApp: targetApp)
+                    : .untouched
+            case .noFocusedElement:
+                outcome = .untouched
+            case .text, .empty:
+                // A moved or collapsed selection is where a replace would land, so neither runs.
+                outcome = .failed
+            }
+        }
+
+        switch outcome {
+        case .delivered: return true
+        case .failed: return false
+        case .untouched:
+            let completion = DeliveryCompletion()
+            await performDelivery(
+                InjectedText(modified), targetApp: targetApp, expectedKeyword: nil,
+                keywordLength: 0, automaticGeneration: nil, completion: completion)
+            return completion.isConfirmed
+        }
+    }
+
+    /// Rule 1: a renderer's selection is written by keys, never set over AX, so it gets no anchor.
+    private func retypeAnchor(
+        for original: String, in targetApp: NSRunningApplication
+    ) -> RetypeAnchor? {
+        guard let element = AccessibilityText.focusedElement(in: targetApp),
+            !usesTextMarkerSelection(element),
+            isAttributeSettable(kAXSelectedTextRangeAttribute, in: element),
+            let value = stringValue(in: element),
+            let range = selectedRange(in: element),
+            let stringRange = Range(range, in: value),
+            value[stringRange] == original
+        else { return nil }
+        return RetypeAnchor(element: element, range: range)
+    }
+
+    /// Last edit first, so each placed range still means what it did in the original selection.
+    private func retypeByPlacingCaret(
+        _ edits: [RetypeEdit], anchor: RetypeAnchor, targetApp: NSRunningApplication
+    ) async -> RetypeOutcome {
+        var typedAny = false
+        for edit in edits.reversed() {
+            let range = NSRange(
+                location: anchor.range.location + edit.originalUTF16Offset,
+                length: edit.deleted.utf16.count)
+            guard
+                deliveryIsAllowed(
+                    automaticGeneration: nil, targetApp: targetApp,
+                    promptForInteractiveAccessibility: false),
+                setSelectedRange(range, in: anchor.element),
+                await retypeConverges(
+                    afterKeys: 0, { self.selectedString(in: anchor.element) == edit.deleted })
+            else {
+                if typedAny { return .failed }
+                return setSelectedRange(anchor.range, in: anchor.element) ? .untouched : .failed
+            }
+            typedAny = true
+            guard await typeRetypeEdit(edit, targetApp: targetApp) else { return .failed }
+            let caret = NSRange(location: range.location + edit.inserted.utf16.count, length: 0)
+            // Typed keys queue behind each other but not behind AX, so the next placement waits.
+            guard
+                await retypeLanded(
+                    at: caret, afterKeys: edit.inserted.count, in: anchor.element)
+            else { return .failed }
+        }
+        return .delivered
+    }
+
+    /// A smart quote or autocorrection can change the typed length, so a still caret also lands.
+    private func retypeLanded(
+        at caret: NSRange, afterKeys keys: Int, in element: AXUIElement
+    ) async -> Bool {
+        if await retypeConverges(afterKeys: keys, { self.selectedRange(in: element) == caret }) {
+            return true
+        }
+        guard let settled = selectedRange(in: element), settled.length == 0,
+            await wait(for: Self.retypeSettleInterval)
+        else { return false }
+        return selectedRange(in: element) == settled
+    }
+
+    /// First edit first: arrows move relative to wherever the last correction left the caret.
+    private func retypeByWalkingCaret(
+        _ edits: [RetypeEdit], targetApp: NSRunningApplication
+    ) async -> RetypeOutcome {
+        guard let collapse = makeKeyEvents(code: CGKeyCode(kVK_LeftArrow)),
+            await postEventGroups([collapse], targetApp: targetApp, automaticGeneration: nil)
+        else { return .untouched }
+        for edit in edits {
+            guard
+                let skip = makeRepeatedKeyEvents(
+                    code: CGKeyCode(kVK_RightArrow), count: edit.skippedCharacters),
+                await postEventGroups(skip, targetApp: targetApp, automaticGeneration: nil),
+                await selectWalkedSpan(edit.deleted, queuedKeys: skip.count, targetApp: targetApp),
+                await typeRetypeEdit(edit, targetApp: targetApp)
+            else { return .failed }
+        }
+        return await wait(for: .milliseconds(100)) ? .delivered : .failed
+    }
+
+    /// Chromium's AX text drops a paragraph break the caret still stops at, so a miss steps on.
+    private static let walkRealignSteps = [1, 1, 1, -4]
+
+    /// Each retry collapses to the last attempt's start and moves one stop before selecting again.
+    private func selectWalkedSpan(
+        _ span: String, queuedKeys: Int, targetApp: NSRunningApplication
+    ) async -> Bool {
+        guard
+            let select = makeRepeatedKeyEvents(
+                code: CGKeyCode(kVK_RightArrow), flags: .maskShift, count: span.count),
+            let collapse = makeKeyEvents(code: CGKeyCode(kVK_LeftArrow))
+        else { return false }
+        let retries = Self.walkRealignSteps.compactMap { step in
+            makeRepeatedKeyEvents(
+                code: CGKeyCode(step > 0 ? kVK_RightArrow : kVK_LeftArrow), count: abs(step)
+            ).map { [collapse] + $0 }
+        }
+        var queued = queuedKeys
+        for move in [[]] + retries {
+            guard
+                await postEventGroups(
+                    move + select, targetApp: targetApp, automaticGeneration: nil)
+            else { return false }
+            queued += move.count + select.count
+            if await retypeConverges(
+                afterKeys: queued, { AccessibilityText.selection(in: targetApp) == span })
+            {
+                return true
+            }
+            queued = 0
+        }
+        return false
+    }
+
+    /// One character per keystroke, as a keyboard sends them; a pure deletion presses Delete.
+    private func typeRetypeEdit(_ edit: RetypeEdit, targetApp: NSRunningApplication) async -> Bool {
+        var events: [[CGEvent]] = []
+        if edit.inserted.isEmpty {
+            guard let delete = makeKeyEvents(code: CGKeyCode(kVK_Delete)) else { return false }
+            events = [delete]
+        }
+        for character in edit.inserted {
+            guard let keystrokes = makeUnicodeEvents(String(character)) else { return false }
+            events += keystrokes
+        }
+        return await postEventGroups(events, targetApp: targetApp, automaticGeneration: nil)
+    }
+
+    /// A busy editor can still be applying keys already posted, so the wait grows with their count.
+    private func retypeConverges(afterKeys keys: Int, _ condition: () -> Bool) async -> Bool {
+        let attempts = min(
+            Self.retypeConvergenceAttempts + keys * Self.retypeAttemptsPerKey,
+            Self.retypeMaximumAttempts)
+        for _ in 0..<attempts {
+            if condition() { return true }
+            guard await wait(for: Self.retypeConvergenceInterval) else { return false }
+        }
+        return condition()
+    }
+
+    /// Slower than keyword convergence: a web renderer answers about a key it just applied late.
+    private static let retypeConvergenceAttempts = 40
+    private static let retypeAttemptsPerKey = 2
+    private static let retypeMaximumAttempts = 400
+    private static let retypeConvergenceInterval = Duration.milliseconds(10)
+    private static let retypeSettleInterval = Duration.milliseconds(100)
+
+    /// A changed span is selected before it is typed over, so this must read what it covers.
+    private func selectedString(in element: AXUIElement) -> String? {
+        var value: CFTypeRef?
+        guard
+            AXUIElementCopyAttributeValue(
+                element, kAXSelectedTextAttribute as CFString, &value) == .success
+        else { return nil }
+        return value as? String
+    }
+
+    private func makeRepeatedKeyEvents(
+        code: CGKeyCode, flags: CGEventFlags = [], count: Int
+    ) -> [[CGEvent]]? {
+        var events: [[CGEvent]] = []
+        events.reserveCapacity(count)
+        for _ in 0..<count {
+            guard let pair = makeKeyEvents(code: code, flags: flags) else { return nil }
+            events.append(pair)
+        }
+        return events
+    }
+
     /// A `changeCount` that never moves means nothing was selected, not that the old clipboard won.
     func copySelection(from targetApp: NSRunningApplication?) async -> String? {
         await deliveryQueue.drain()
@@ -1025,10 +1279,11 @@ final class DeliveryQueue {
 
     var isIdle: Bool { tasks.isEmpty }
 
+    @discardableResult
     func enqueue(
         isAutomatic: Bool,
         operation: @escaping @MainActor () async -> Void
-    ) {
+    ) -> UUID {
         let id = UUID()
         let predecessor = tail?.task
         let task = Task { @MainActor [weak self] in
@@ -1041,6 +1296,12 @@ final class DeliveryQueue {
         tasks[id] = task
         tail = (id, task)
         if isAutomatic { automaticTaskID = id }
+        return id
+    }
+
+    /// Cooperative: a running job stops at its next spaced keystroke, whose wait sees the cancel.
+    func cancel(_ id: UUID) {
+        tasks[id]?.cancel()
     }
 
     func cancelAutomatic() {

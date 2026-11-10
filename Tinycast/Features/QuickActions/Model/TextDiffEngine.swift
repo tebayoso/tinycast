@@ -48,6 +48,13 @@ enum TextDiffEngine: Sendable {
         var current = ""
         var inWord = false
         for character in string {
+            // A line break of its own stays equal when punctuation beside it changes.
+            if character.isNewline {
+                if !current.isEmpty { tokens.append(current) }
+                tokens.append(String(character))
+                current = ""
+                continue
+            }
             let isWordCharacter = character.isLetter || character.isNumber
             if isWordCharacter == inWord, !current.isEmpty {
                 current.append(character)

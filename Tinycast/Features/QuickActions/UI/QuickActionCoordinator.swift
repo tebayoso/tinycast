@@ -235,9 +235,9 @@ final class QuickActionCoordinator {
         }
         let state = QuickActionPanelState(
             action: action, original: selection, targetLanguage: targetLanguage)
-        let previews = store.settings.previewsResult(action)
-        if previews { present(state, target: target) }
-        await perform(state, target: target, previewing: previews)
+        let mode = store.settings.resultMode(action)
+        if mode == .preview { present(state, target: target) }
+        await perform(state, target: target, mode: mode)
     }
 
     /// A missing permission cannot be fixed from a pill that fades, so it earns a dialog instead.
@@ -264,14 +264,19 @@ final class QuickActionCoordinator {
     }
 
     private func perform(
-        _ state: QuickActionPanelState, target: Target, previewing: Bool
+        _ state: QuickActionPanelState, target: Target, mode: QuickActionResultMode
     ) async {
+        let previewing = mode == .preview
         do {
             let text = try await produce(state, previewing: previewing)
             guard !Task.isCancelled else { return }
             state.finish(text)
-            if previewing { return }
-            deliver(text, to: target, action: state.action)
+            switch mode {
+            case .preview: return
+            case .replace: deliver(text, to: target, action: state.action)
+            case .typeChanges:
+                await typeChanges(text, over: state.original, to: target, action: state.action)
+            }
         } catch let error where error is CancellationError || Task.isCancelled {
             return
         } catch let error as TextTranslator.Failure where error.needsDownload {
@@ -317,16 +322,50 @@ final class QuickActionCoordinator {
             })
     }
 
+    /// Awaited, unlike a replace: the run stays held so a second press can't read half-typed text.
+    private func typeChanges(
+        _ text: String, over original: String, to target: Target, action: QuickAction
+    ) async {
+        // Notes edits its own TextKit storage; a script that would type a Return replaces too.
+        guard case .external(let app) = target,
+            let edits = RetypeEngine.edits(from: original, to: text)
+        else {
+            deliver(text, to: target, action: action)
+            return
+        }
+        guard !edits.isEmpty else {
+            core.showMessage(String(localized: "Nothing to change"))
+            return
+        }
+        let modified = RetypeEngine.aligned(text, to: original)
+        let delivered = await injector.retypeSelection(
+            original, as: modified, edits: edits, in: app)
+        guard !Task.isCancelled else { return }
+        if delivered {
+            reportDelivered(action)
+        } else {
+            reportUndelivered(modified, action: action)
+        }
+    }
+
+    private func reportDelivered(_ action: QuickAction) {
+        core.showMessage(String(localized: "\(action.title) applied"))
+    }
+
     /// A replacement that never lands would otherwise lose the reply, so the clipboard keeps it.
+    private func reportUndelivered(_ text: String, action: QuickAction) {
+        Paster.copyPlainText(text)
+        core.showMessage(
+            String(localized: "\(action.title) couldn't replace the selection — copied instead"),
+            tone: .danger)
+    }
+
     private func deliver(_ text: String, to target: Target, action: QuickAction) {
         let onDelivered: @MainActor @Sendable () -> Void = { [weak self] in
-            self?.core.showMessage(String(localized: "\(action.title) applied"))
+            self?.reportDelivered(action)
         }
         let onFailed: @MainActor @Sendable () -> Void = { [weak self] in
-            Paster.copyPlainText(text)
-            self?.core.showMessage(
-                String(localized: "\(action.title) couldn't replace the selection — copied instead"),
-                tone: .danger)
+            self?.reportUndelivered(text, action: action)
         }
         switch target {
         case .external(let app):
@@ -367,7 +406,7 @@ final class QuickActionCoordinator {
 
     private func rerun(_ state: QuickActionPanelState, target: Target) {
         state.restart()
-        start { [weak self] in await self?.perform(state, target: target, previewing: true) }
+        start { [weak self] in await self?.perform(state, target: target, mode: .preview) }
     }
 
     private var targetLanguage: Locale.Language {

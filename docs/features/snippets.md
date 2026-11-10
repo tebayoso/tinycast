@@ -327,6 +327,11 @@ where every clause is a rule in it.
 4. Events: delete the keyword, then paste (long or multiline) or type in four-unit keystrokes.
 5. Nothing landed → say so.
 
+Quick Actions' **Type Changes** (`TextInjector.retypeSelection`) is a second entry into the same
+gates: Rule 1 keeps renderers to arrow keys, and Rule 3's read-back becomes a check that each span
+is selected before it is typed over. Its tiers are in
+[quick-actions.md](quick-actions.md#type-changes).
+
 **Rule 1: a renderer's Accessibility surface is not authoritative.** Chromium and Monaco publish
 selection as opaque text markers, and their `AXValue` either trails the editor by a few milliseconds
 or — in VSCodium — stays empty and caret-zero indefinitely while the real editor holds the text. A

@@ -16,6 +16,11 @@ enum TextDiffTests {
                 == [.deleted("café"), .inserted("cafe"), .equal(" 👩🏽‍💻\n")])
 
         precondition(
+            TextDiffEngine.diff(original: "end.\nquien", modified: "end.\n¿Quién")
+                == [.equal("end.\n"), .deleted("quien"), .inserted("¿Quién")],
+            "a line break beside changed punctuation stays equal")
+
+        precondition(
             TextDiffEngine.diff(original: "same", modified: "same") == [.equal("same")])
         precondition(
             TextDiffEngine.diff(

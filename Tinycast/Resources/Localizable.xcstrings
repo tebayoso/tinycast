@@ -1,7 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "" : {},
+    "" : {
+
+    },
     "%@ (%lld items)" : {
       "localizations" : {
         "de" : {
@@ -16897,7 +16899,6 @@
         }
       }
     },
-    
     "A window layout with this name already exists." : {
       "localizations" : {
         "de" : {
@@ -85913,6 +85914,58 @@
         }
       }
     },
+    "Nothing to change" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nichts zu ändern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nada que cambiar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rien à modifier"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "変更する箇所はありません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "변경할 내용 없음"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nada a alterar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нечего менять"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无需更改"
+          }
+        }
+      }
+    },
     "Nothing to clean up" : {
       "localizations" : {
         "de" : {
@@ -101244,54 +101297,54 @@
         }
       }
     },
-    "Replace writes into your document, and undo restores it. Preview shows a panel first." : {
+    "Replace writes into your document, and undo restores it. Type Changes moves the cursor to each correction and types only what changed. Preview shows a panel first." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "„Ersetzen“ schreibt in dein Dokument, und „Widerrufen“ stellt es wieder her. „Vorschau“ zeigt zuerst einen Bereich an."
+            "value" : "„Ersetzen“ schreibt in dein Dokument, und „Widerrufen“ stellt es wieder her. „Änderungen tippen“ setzt den Cursor auf jede Korrektur und tippt nur, was sich geändert hat. „Vorschau“ zeigt zuerst einen Bereich an."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reemplazar escribe en tu documento y deshacer lo restaura. Previsualizar muestra primero un panel."
+            "value" : "Reemplazar escribe en tu documento y deshacer lo restaura. Teclear cambios lleva el cursor a cada corrección y teclea solo lo que cambió. Previsualizar muestra primero un panel."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "« Remplacer » remplace le texte sélectionné. Vous pouvez annuler cette modification. « Aperçu » affiche d’abord le résultat."
+            "value" : "« Remplacer » remplace le texte sélectionné. Vous pouvez annuler cette modification. « Saisir les modifications » place le curseur sur chaque correction et ne saisit que ce qui a changé. « Aperçu » affiche d’abord le résultat."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "「置き換える」は書類に直接書き込み、取り消すと元に戻ります。「プレビュー」では、先にパネルが表示されます。"
+            "value" : "「置き換える」は書類に直接書き込み、取り消すと元に戻ります。「変更を入力」はカーソルを各修正箇所に移動し、変更された部分だけを入力します。「プレビュー」では、先にパネルが表示されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "‘교체’는 문서에 직접 쓰며 실행 취소로 복원할 수 있습니다. ‘미리보기’는 먼저 패널을 표시합니다."
+            "value" : "‘교체’는 문서에 직접 쓰며 실행 취소로 복원할 수 있습니다. ‘변경 사항 입력’은 커서를 각 수정 위치로 옮겨 바뀐 부분만 입력합니다. ‘미리보기’는 먼저 패널을 표시합니다."
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Substituir escreve no seu documento, e desfazer o restaura. Pré-visualizar mostra um painel primeiro."
+            "value" : "Substituir escreve no seu documento, e desfazer o restaura. Digitar alterações leva o cursor a cada correção e digita apenas o que mudou. Pré-visualizar mostra um painel primeiro."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "«Заменить» записывает результат в ваш документ, а отмена восстанавливает его. «Предпросмотр» сначала показывает панель."
+            "value" : "«Заменить» записывает результат в ваш документ, а отмена восстанавливает его. «Вводить изменения» переводит курсор к каждой правке и вводит только изменённое. «Предпросмотр» сначала показывает панель."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "“替换”会直接写入你的文稿，可通过撤销恢复。“预览”会先显示面板。"
+            "value" : "“替换”会直接写入你的文稿，可通过撤销恢复。“键入更改”会将光标移到每处修改，只键入更改的内容。“预览”会先显示面板。"
           }
         }
       }
@@ -132454,6 +132507,59 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "输入 @slug 来指定某个服务器。聊天会在首次调用工具前询问你。"
+          }
+        }
+      }
+    },
+    "Type Changes" : {
+      "comment" : "Quick Action result mode: move the cursor to each correction and type only what changed",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungen tippen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teclear cambios"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saisir les modifications"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "変更を入力"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "변경 사항 입력"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Digitar alterações"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вводить изменения"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "键入更改"
           }
         }
       }

@@ -19,6 +19,9 @@ struct QuickActionTests {
         everyActionDescribesItself()
         promptsForbidCommentaryAndInjection()
         previewChoicesRememberOnlyWhatWasChosen()
+        typedChangesIsAThirdResultForEditsOnly()
+        retypePlansReproduceTheReplyInBothTiers()
+        retypePlansRefuseWhatTheyCannotTypeSafely()
         settingsPersistAndRepairTheirRoute()
         actionsOverrideTheirRoute()
         refusalsNameTheirOwnCause()
@@ -322,6 +325,151 @@ struct QuickActionTests {
             "a stored choice survives the trip through UserDefaults")
         restored.storedPreviewChoices = ["notAnAction": true]
         expect(restored.previewChoices.isEmpty, "an unknown key is a removed action, not a crash")
+    }
+
+    static func typedChangesIsAThirdResultForEditsOnly() {
+        var settings = QuickActionSettings()
+        expect(
+            settings.resultMode(BuiltInQuickAction.fixGrammar) == .replace,
+            "grammar still replaces until the reader picks Type Changes")
+        settings.setResultMode(.typeChanges, for: .fixGrammar)
+        expect(
+            settings.resultMode(BuiltInQuickAction.fixGrammar) == .typeChanges,
+            "Type Changes is remembered")
+        expect(
+            !settings.previewsResult(BuiltInQuickAction.fixGrammar),
+            "typing the changes is a way of applying, never a preview")
+        settings.setResultMode(.preview, for: .fixGrammar)
+        expect(
+            settings.resultMode(BuiltInQuickAction.fixGrammar) == .preview,
+            "choosing Preview drops Type Changes")
+        settings.setResultMode(.replace, for: .fixGrammar)
+        expect(
+            settings.resultMode(BuiltInQuickAction.fixGrammar) == .replace,
+            "choosing Replace drops it too")
+
+        settings.setResultMode(.typeChanges, for: .translate)
+        expect(
+            settings.resultMode(BuiltInQuickAction.translate) == .replace,
+            "a result that is not the selection edited cannot be typed as changes")
+        settings.setResultMode(.typeChanges, for: .summarize)
+        expect(
+            settings.resultMode(BuiltInQuickAction.summarize) == .preview,
+            "Summarize still always previews")
+
+        settings.setResultMode(.typeChanges, for: .rewrite)
+        var restored = QuickActionSettings()
+        restored.storedPreviewChoices = settings.storedPreviewChoices
+        restored.storedTypedChangeChoices = settings.storedTypedChangeChoices
+        expect(
+            restored.resultMode(BuiltInQuickAction.rewrite) == .typeChanges,
+            "the choice survives the trip through UserDefaults")
+        restored.storedTypedChangeChoices = ["translate", "notAnAction"]
+        expect(
+            restored.storedTypedChangeChoices.isEmpty,
+            "a stored key that cannot type changes is dropped")
+
+        let name = "tinycast.quick-action-test.typed-changes"
+        let defaults = isolatedDefaults(name)
+        defer { discardSuite(name, defaults) }
+        QuickActionSettingsStore(defaults: defaults).settings.setResultMode(
+            .typeChanges, for: .fixGrammar)
+        expect(
+            QuickActionSettingsStore(defaults: defaults).settings.resultMode(
+                BuiltInQuickAction.fixGrammar) == .typeChanges,
+            "Type Changes survives a relaunch")
+    }
+
+    static func retypePlansReproduceTheReplyInBothTiers() {
+        let cases: [(original: String, reply: String, edits: Int)] = [
+            ("hola, esto es un texo con herrores", "Hola, esto es un texto con errores", 3),
+            ("the cat sat", "the black cat sat", 1),
+            ("cat sat", "The cat sat", 1),
+            ("line one\nfoo bar", "line one\nThe foo bar", 1),
+            ("teh cat\n", "the cat", 1),
+            ("  leading spaces stay", "leading spaces stay.", 1),
+            ("café 🎉 bien", "café 🎉 muy bien", 1),
+            ("I has went home", "I went home", 1),
+            ("a, b; c", "a; b, c", 2),
+            ("Bueno si quieres vamos", "Bueno, si quieres, vamos", 2),
+            ("Gracias por todo,nos vemos", "Gracias por todo, nos vemos", 1),
+            ("El proyecto , aunque complicado ,salio bien", "El proyecto, aunque complicado, salió bien", 2),
+            ("Aun asi volveremos por que si", "Aun así volveremos porque sí", 4),
+            (
+                "Necesitan esto.\nquien es diego, y quien es kiani. Necesitan Emails?",
+                "Necesitan esto.\n¿Quién es Diego y quién es Kiani? ¿Necesitan emails?", 5
+            )
+        ]
+        for (original, reply, count) in cases {
+            guard let edits = RetypeEngine.edits(from: original, to: reply) else {
+                expect(false, "\(original) has a plan")
+                continue
+            }
+            let target = RetypeEngine.aligned(reply, to: original)
+            expect(edits.count == count, "\(original) needs \(count) edits, got \(edits.count)")
+            expect(
+                edits.allSatisfy { $0.deleted.contains { $0.isLetter || $0.isNumber } },
+                "\(original): every edit confirms a word, never a lone space or comma")
+            expect(placing(edits, over: original) == target, "placing the caret rebuilds \(target)")
+            expect(walking(edits, over: original) == target, "walking the caret rebuilds \(target)")
+        }
+        expect(
+            RetypeEngine.edits(from: "Already right.", to: "Already right.") == [],
+            "an unchanged reply types nothing")
+        expect(
+            RetypeEngine.aligned("the cat", to: "teh cat\n") == "the cat\n",
+            "the trimmed reply gets the selection's trailing newline back")
+        expect(
+            RetypeEngine.aligned("x", to: "   ") == "x",
+            "a selection that is all whitespace lends nothing")
+    }
+
+    static func retypePlansRefuseWhatTheyCannotTypeSafely() {
+        expect(
+            RetypeEngine.edits(from: "one two", to: "one\ntwo") == nil,
+            "a typed Return would send a message, so the caller replaces instead")
+        expect(
+            RetypeEngine.edits(from: "one two", to: "one\ttwo") == nil,
+            "a typed Tab would move focus")
+        expect(
+            RetypeEngine.edits(from: "line\n", to: "line\nmore") == nil,
+            "an insertion with no word beside it on its own line has nothing to confirm")
+        let long = String(repeating: "word ", count: 400)
+        let edits = RetypeEngine.edits(from: long + "teh end", to: long + "the end") ?? []
+        expect(
+            RetypeEdit.placedKeystrokes(edits) < 10,
+            "placing the caret types only the correction")
+        expect(
+            RetypeEdit.walkedKeystrokes(edits) > RetypeEdit.maxKeystrokes,
+            "walking two thousand characters by arrow key is over the cap, so it replaces")
+    }
+
+    /// The accessibility tier: last edit first, each at its offset in the original selection.
+    static func placing(_ edits: [RetypeEdit], over original: String) -> String {
+        let text = NSMutableString(string: original)
+        for edit in edits.reversed() {
+            let range = NSRange(
+                location: edit.originalUTF16Offset, length: edit.deleted.utf16.count)
+            guard NSMaxRange(range) <= text.length, text.substring(with: range) == edit.deleted
+            else { return "<misplaced \(edit.deleted)>" }
+            text.replaceCharacters(in: range, with: edit.inserted)
+        }
+        return text as String
+    }
+
+    /// The arrow-key tier: first edit first, moving by characters from where the last one ended.
+    static func walking(_ edits: [RetypeEdit], over original: String) -> String {
+        var characters = Array(original)
+        var caret = 0
+        for edit in edits {
+            caret += edit.skippedCharacters
+            let end = caret + edit.deleted.count
+            guard end <= characters.count, String(characters[caret..<end]) == edit.deleted
+            else { return "<misplaced \(edit.deleted)>" }
+            characters.replaceSubrange(caret..<end, with: Array(edit.inserted))
+            caret += edit.inserted.count
+        }
+        return String(characters)
     }
 
     /// A fixed suite name stops cfprefsd accumulating a plist per run; cleared at both ends.

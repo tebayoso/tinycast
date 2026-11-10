@@ -3,8 +3,8 @@
 Act on whatever text is selected, in whatever app is frontmost. Four are shipped: Fix Grammar,
 Rewrite, Translate and Summarize, each with its own bindable shortcut **and its own launcher command**,
 both listed in **Settings → Quick Actions**. Three go through the AI provider layer; Translate goes to
-Apple's own translator. The result either replaces the selection or arrives in a floating panel, per
-action.
+Apple's own translator. The result replaces the selection, is typed into it as only the changed
+words, or arrives in a floating panel, per action.
 
 A **custom Quick Action** is a name, a glyph and a prompt, run through the same provider. It takes a
 shortcut and a launcher row like any other.
@@ -93,13 +93,13 @@ without one.
 The custom case carries the record rather than an id, so a run uses the prompt as it was when it
 started.
 
-| Action | Engine | Default result | Diff |
-| --- | --- | --- | --- |
-| Fix Grammar | provider | replaces directly | yes |
-| Rewrite | provider | panel | yes |
-| Translate | Apple Translation | panel | no |
-| Summarize | provider | panel, always | no |
-| a custom action | provider | panel | no |
+| Action | Engine | Default result | Diff | Type Changes |
+| --- | --- | --- | --- | --- |
+| Fix Grammar | provider | replaces directly | yes | offered |
+| Rewrite | provider | panel | yes | offered |
+| Translate | Apple Translation | panel | no | no |
+| Summarize | provider | panel, always | no | no |
+| a custom action | provider | panel | no | no |
 
 A custom action previews by default, switchable to Replace per row: Tinycast cannot know whether an
 arbitrary prompt transforms the text or answers a question about it, and only the second destroys what
@@ -141,8 +141,9 @@ delete must never leave a kept record stripped of its shortcut.
 Only Fix Grammar applies unseen: it changes what was wrong, where a rewrite changes the voice.
 Summarize can never be told to replace text unseen — it answers a question *about* the text, so
 replacing the text with the answer has to be a choice made in the panel. Every other default is a
-**Replace / Preview** popup in the pane — a popup rather than a second checkbox, because the trailing
-checkbox column means "show in the launcher" in every pane the app has. `QuickActionSettings` stores
+**Replace / Preview** popup in the pane, with **Type Changes** between them for Fix Grammar and
+Rewrite — a popup rather than a second checkbox, because the trailing checkbox column means "show
+in the launcher" in every pane the app has. `QuickActionSettings` stores
 only what the reader actually changed, so a new action arrives with its own default rather than
 whatever a missing key would have meant.
 
@@ -215,8 +216,11 @@ makes it visible but lays its bars *over* the content instead of insetting it, s
 the buttons and escapes the corner clip. And a ramp starting at the panel edge rather than below the
 bar leaves text about 60% visible behind the title.
 
-`TextDiffEngine` shows what changed when the output is the input, edited. Its traceback is
-quadratic, so past `maxTokens` a side it degrades to whole-text rather than asking for gigabytes.
+`TextDiffEngine` shows what changed when the output is the input, edited. A line break is a
+token of its own, so punctuation changing beside one — `?` and `¿` around a paragraph's end —
+leaves the break equal, rather than making Type Changes refuse a change that would type a Return.
+Its traceback is quadratic, so past `maxTokens` a side it degrades to whole-text rather than
+asking for gigabytes.
 It keeps one rolling `UInt16` score row and one insert-or-delete bit per token pair — equality is
 re-checked during traceback — so the cap costs about 2 MB where a full score matrix cost 32 MB.
 
@@ -273,6 +277,44 @@ no keyword, so rule 2 never applies. The event tiers behind it type or paste ove
 every app treats as replacing it — but that is the target app's behaviour rather than something
 Tinycast asserts, so it is the part worth checking by hand.
 
+### Type Changes
+
+The third result, offered only where the result is the selection edited (`offersTypedChanges`,
+which follows `showsDiff`). `RetypeEngine` diffs the reply against the selection with
+`TextDiffEngine`, puts the selection's edge whitespace back on the trimmed reply, and returns one
+`RetypeEdit` per changed span. `TextInjector.retypeSelection` then selects each span and types only
+its correction, so untouched text is never rewritten. It is stored under its own additive key,
+`quickActionTypedChanges`, rather than as a third value of `quickActionPreviews`, and like that key
+it never travels in a backup.
+
+- **Nothing is typed blind.** Every edit deletes a word: a span with no letter or digit in it — an
+  insertion, a lone space that becomes `, `, a stray comma — borrows the word beside it into both
+  sides, never across a line break. A lone space matches too many places to prove where the caret
+  is, and a realignment step could otherwise land on the space next door. Before typing over a span,
+  the injector confirms the target's selected text is exactly that span, and stops otherwise.
+- **Typed like a keyboard.** One character per keystroke, never `UnicodeTypingChunk`'s four-unit
+  groups: an editor such as Draft.js handles a multi-character key event unlike a typed one.
+- **The waits grow with the keys.** A busy editor such as X is still applying keys already posted,
+  so every selection check waits 400 ms plus 20 ms per queued key, capped at four seconds. In the
+  AX tier a correction has landed once the caret reaches the typed length, or, when a smart quote
+  or autocorrection changed that length, once the collapsed caret stops moving; last edit first
+  means no later offset depends on it.
+- **Two tiers.** Where `AXSelectedTextRange` is settable and the live selection still reads as the
+  captured text, the caret is placed over AX, last edit first, so earlier offsets never drift. A
+  renderer is never written to over AX (Rule 1), so Chromium and Electron walk the caret with arrow
+  keys instead, first edit first, and confirm each span with an AX *read*. A span that reads wrong
+  is retried up to three stops on and one back (`walkRealignSteps`) before the run stops, because a
+  paragraph break the AX text dropped still costs the caret one arrow press.
+- **Replace is the fallback, and only before the first key.** Inserted Return, Tab or another
+  control character, more than `RetypeEdit.maxKeystrokes`, a target with no AX read, or the Notes
+  editor all take the plain replace. A selection that reads as other text, or as nothing, has moved
+  or collapsed, so it neither replaces nor types: it copies and says so. Once a key has gone in, a
+  failure stops the same way, leaving the text part-corrected for Undo.
+- **Cancelling stops the keys.** `retypeSelection` forwards its caller's cancellation to its
+  `DeliveryQueue` job, whose spaced keystrokes stop at the next wait.
+- **The run is held until typing settles.** `QuickActionCoordinator` awaits the retype, so a second
+  shortcut press cannot read a half-typed selection.
+
 **A replacement that never lands says so, and keeps the reply.** Every tier can decline, and a shortcut
 that quietly did nothing is indistinguishable from a shortcut that is not bound. `DeliveryCompletion`
 now settles either way, so a delivery that returned early reports failure exactly once; Quick Actions
@@ -287,6 +329,18 @@ failure handler, so automatic expansion stays silent as before.
   replacement, Undo, and that changing the note before pressing Replace copies instead.
 - In a Chromium target, run one on a **short** selection whose result stays under 100 characters on
   one line: the whole result lands, not its first four characters.
+- Set Fix Grammar to **Type Changes**, select a misspelt paragraph in TextEdit, Notes, Safari,
+  Chrome and Slack, and press it: the caret jumps to each mistake and types only the correction,
+  the rest of the text is untouched, and Undo walks it back. Native apps correct last mistake first.
+- With Type Changes, select text that is already correct: the pill says `Nothing to change`.
+- With Type Changes, select something else, or click to collapse the selection, while the model is
+  answering: nothing is typed, the result is copied, and the pill says so.
+- With Type Changes, select several paragraphs in Chrome or Slack: either every correction lands, or
+  the run stops cleanly — never a correction typed over the wrong word.
+- With Type Changes in an app with smart quotes on, fix `dont` and `its` in a long paragraph: every
+  correction lands, with the app's curly apostrophe, and the run does not stop after the first.
+- With Type Changes on X, fix two paragraphs whose second needs an opening `¿`, and a sentence
+  missing several commas: each comma lands after its own word, and the paragraphs stay apart.
 - Replace mode, with a slow route selected: the message pill says `Fixing Grammar…` with a blue
   spinner while the model works, and the result message takes its place.
 - Run one from the launcher (⌘Space → "Fix Grammar") with text selected behind it: the palette
@@ -315,6 +369,6 @@ failure handler, so automatic expansion stays silent as before.
 - Translate Korean text with Korean not downloaded and the target language installed: the panel names
   Korean, the language that is actually missing.
 - Revoke Accessibility while enabled: a HUD explains instead of failing silently.
-- Harnesses: `quick-action-test` (action metadata, prompt boundaries, preview choices, routes and
-  their repair) and
+- Harnesses: `quick-action-test` (action metadata, prompt boundaries, preview and Type Changes
+  choices, edit plans replayed through both caret tiers, routes and their repair) and
   `text-diff-test` (exact chunks, coalescing, Unicode, ties, token boundaries and fast paths).
